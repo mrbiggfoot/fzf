@@ -3,6 +3,7 @@ package fzf
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -412,6 +413,59 @@ func NewTerminal(opts *Options, eventBox *util.EventBox) *Terminal {
 		initFunc:   func() { renderer.Init() }}
 	t.prompt, t.promptLen = t.processTabs([]rune(opts.Prompt), 0)
 	return &t
+}
+
+// Persistent state of a selected item
+type SelItemState struct {
+	At       time.Time
+	Idx	     int
+}
+
+// Persistent state of the Terminal struct
+type TerminalState struct {
+	Cy       int
+	Offset   int
+	Input    string
+	Selected []SelItemState
+}
+
+func (t *Terminal) Marshal() string {
+	ts := TerminalState{
+		Cy:       t.cy,
+		Offset:   t.offset,
+		Input:    string(t.input),
+		Selected: make([]SelItemState, 0, len(t.selected)),
+	}
+	for idx, sel := range t.selected {
+		ts.Selected = append(ts.Selected, SelItemState{At: sel.at, Idx: int(idx)})
+	}
+	b, err := json.Marshal(ts)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+func (t *Terminal) Unmarshal(str string) {
+	var ts TerminalState
+	err := json.Unmarshal([]byte(str), &ts)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	t.input = trimQuery(ts.Input)
+	t.cx = len(t.input)
+	t.cy = ts.Cy
+	t.offset = ts.Offset
+	t.version++
+	if t.multi {
+		t.selected = make(map[int32]selectedItem)
+		for _, sel := range ts.Selected {
+			if sel.Idx < t.merger.Length() {
+				t.selected[int32(sel.Idx)] = selectedItem{sel.At, t.merger.Get(sel.Idx).item}
+			}
+		}
+	}
 }
 
 // Input returns current query string
@@ -1423,7 +1477,7 @@ func (t *Terminal) Loop() {
 		t.tui.Close()
 		code := getCode()
 		if code <= exitNoMatch && t.history != nil {
-			t.history.append(string(t.input))
+			t.history.append(t.Marshal())
 		}
 		// prof.Stop()
 		os.Exit(code)
@@ -1755,15 +1809,15 @@ func (t *Terminal) Loop() {
 				t.cx++
 			case actPreviousHistory:
 				if t.history != nil {
-					t.history.override(string(t.input))
-					t.input = trimQuery(t.history.previous())
-					t.cx = len(t.input)
+					t.history.override(t.Marshal())
+					t.Unmarshal(t.history.previous())
+					req(reqList)
 				}
 			case actNextHistory:
 				if t.history != nil {
-					t.history.override(string(t.input))
-					t.input = trimQuery(t.history.next())
-					t.cx = len(t.input)
+					t.history.override(t.Marshal())
+					t.Unmarshal(t.history.next())
+					req(reqList)
 				}
 			case actSigStop:
 				p, err := os.FindProcess(os.Getpid())
