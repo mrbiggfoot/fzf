@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+0.17.3.1
+--------
+- Store selection position in the history file
+- New actions `line-up` and `line-down` to behave like vim's `<C-y>` and `<C-e>`
+
 0.17.3
 ------
 - `$LINES` and `$COLUMNS` are exported to preview command so that the command

@@ -202,6 +202,8 @@ const (
 	actPageDown
 	actHalfPageUp
 	actHalfPageDown
+	actLineUp
+	actLineDown
 	actJump
 	actJumpAccept
 	actPrintQuery
@@ -1781,6 +1783,12 @@ func (t *Terminal) Loop() {
 			case actHalfPageDown:
 				t.vmove(-(t.maxItems() / 2), false)
 				req(reqList)
+			case actLineUp:
+				t.vshift(1)
+				req(reqList)
+			case actLineDown:
+				t.vshift(-1)
+				req(reqList)
 			case actJump:
 				t.jumping = jumpEnabled
 				req(reqJump)
@@ -1956,6 +1964,18 @@ func (t *Terminal) vmove(o int, allowCycle bool) {
 		}
 	}
 	t.vset(dest)
+}
+
+func (t *Terminal) vshift(o int) {
+	if t.reverse {
+		o *= -1
+	}
+	count := t.merger.Length()
+	height := t.maxItems()
+	t.offset += o
+	t.offset = util.Constrain(t.offset, 0, count - height)
+	t.cy = util.Constrain(t.cy, t.offset, t.offset + height - 1)
+	t.cy = util.Min(t.cy, count - 1)
 }
 
 func (t *Terminal) vset(o int) bool {
