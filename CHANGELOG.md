@@ -4,6 +4,7 @@ CHANGELOG
 0.17.4
 ------
 
+- `vim` integration via [neoview](https://github.com/mrbiggfoot/neoview)
 - Added `--layout` option with a new layout called `reverse-list`.
     - `--layout=reverse` is a synonym for `--reverse`
     - `--layout=default` is a synonym for `--no-reverse`
@@ -20,6 +21,11 @@ CHANGELOG
 
 See https://github.com/junegunn/fzf/milestone/12?closed=1 for the full list of
 changes.
+
+0.17.3.1
+--------
+- Store selection position in the history file
+- New actions `line-up` and `line-down` to behave like vim's `<C-y>` and `<C-e>`
 
 0.17.3
 ------
