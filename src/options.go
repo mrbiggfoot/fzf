@@ -47,6 +47,8 @@ const usage = `usage: fzf [options]
                           highlighted substring (default: 10)
     --filepath-word       Make word-wise movements respect path separators
     --jump-labels=CHARS   Label characters for jump and jump-accept
+    --vim                 Enable vim integration
+    --vim-noinfo          Enable vim integration, no info in search window
 
   Layout
     --height=HEIGHT[%]    Display fzf window below the cursor with the given
@@ -197,6 +199,8 @@ type Options struct {
 	Bordered    bool
 	Tabstop     int
 	ClearOnExit bool
+	Vim         bool
+	VimNoInfo   bool
 	Version     bool
 }
 
@@ -246,6 +250,8 @@ func defaultOptions() *Options {
 		Margin:      defaultMargin(),
 		Tabstop:     8,
 		ClearOnExit: true,
+		Vim:         false,
+		VimNoInfo:   false,
 		Version:     false}
 }
 
@@ -1075,6 +1081,14 @@ func parseOptions(opts *Options, allArgs []string) {
 			opts.Cycle = true
 		case "--no-cycle":
 			opts.Cycle = false
+		case "--vim":
+			opts.Vim = true
+		case "--no-vim":
+			opts.Vim = false
+			opts.VimNoInfo = false
+		case "--vim-noinfo":
+			opts.Vim = true
+			opts.VimNoInfo = true
 		case "--hscroll":
 			opts.Hscroll = true
 		case "--no-hscroll":

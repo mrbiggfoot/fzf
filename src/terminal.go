@@ -118,6 +118,8 @@ type Terminal struct {
 	slab       *util.Slab
 	theme      *tui.ColorTheme
 	tui        tui.Renderer
+	vim        bool
+	vim_noinfo bool
 }
 
 type selectedItem struct {
@@ -320,8 +322,11 @@ func NewTerminal(opts *Options, eventBox *util.EventBox) *Terminal {
 		delay = initialDelay
 	}
 	var previewBox *util.EventBox
-	if len(opts.Preview.command) > 0 {
+	if len(opts.Preview.command) > 0 || opts.Vim {
 		previewBox = util.NewEventBox()
+		if opts.Vim {
+			opts.Preview.size = sizeSpec{ 0, false }
+		}
 	}
 	strongAttr := tui.Bold
 	if !opts.Bold {
@@ -418,6 +423,8 @@ func NewTerminal(opts *Options, eventBox *util.EventBox) *Terminal {
 		theme:      opts.Theme,
 		startChan:  make(chan bool, 1),
 		tui:        renderer,
+		vim:        opts.Vim,
+		vim_noinfo: opts.VimNoInfo,
 		initFunc:   func() { renderer.Init() }}
 	t.prompt, t.promptLen = t.processTabs([]rune(opts.Prompt), 0)
 	return &t
@@ -474,6 +481,27 @@ func (t *Terminal) Unmarshal(str string) {
 			}
 		}
 	}
+}
+
+func (t *Terminal) VimSetPreview(item string) {
+	r := strings.NewReplacer("\t", "\\t", "\"", "\\\"", "\\", "\\\\")
+	fmt.Fprintf(os.Stderr, "\x1b]51;[\"call\", \"Tapi_NvSetPreview\", [\"%s\"]]\x07", r.Replace(item))
+}
+
+func (t *Terminal) VimResizeSearchWin(height int) {
+	fmt.Fprintf(os.Stderr, "\x1b]51;[\"call\", \"Tapi_NvResizeSearchWin\", [%d]]\x07", height)
+}
+
+func (t *Terminal) VimSetInfo() {
+	r := strings.NewReplacer("\\", "\\\\", "\"", "\\\"")
+	reading := 0
+	if t.reading {
+		reading = 1
+	}
+	fmt.Fprintf(os.Stderr,
+		"\x1b]51;[\"call\", \"Tapi_NvSetInfo\", [\"%s\", %d, %d, %d, %d, %d]]\x07",
+		r.Replace(string(t.input)), t.cx, t.merger.Length(), t.count,
+		len(t.selected), reading)
 }
 
 // Input returns current query string
@@ -748,11 +776,27 @@ func (t *Terminal) updatePromptOffset() ([]rune, []rune) {
 	return before, after
 }
 
+func (t *Terminal) showCursor() {
+	fmt.Fprintf(os.Stderr, "\x1b[?25h")
+}
+
+func (t *Terminal) hideCursor() {
+	fmt.Fprintf(os.Stderr, "\x1b[?25l")
+}
+
 func (t *Terminal) placeCursor() {
+	if t.vim_noinfo {
+		t.hideCursor()
+		return
+	}
 	t.move(0, t.promptLen+t.queryLen[0], false)
 }
 
 func (t *Terminal) printPrompt() {
+	if t.vim_noinfo {
+		t.VimSetInfo()
+		return
+	}
 	t.move(0, 0, true)
 	t.window.CPrint(tui.ColPrompt, t.strong, t.prompt)
 
@@ -761,7 +805,13 @@ func (t *Terminal) printPrompt() {
 	t.window.CPrint(tui.ColNormal, t.strong, string(after))
 }
 
-func (t *Terminal) printInfo() {
+func (t *Terminal) printInfo(set_vim_info bool) {
+	if t.vim_noinfo {
+		if set_vim_info {
+			t.VimSetInfo()
+		}
+		return
+	}
 	pos := 0
 	if t.inlineInfo {
 		pos = t.promptLen + t.queryLen[0] + t.queryLen[1] + 1
@@ -820,7 +870,9 @@ func (t *Terminal) printHeader() {
 	var state *ansiState
 	for idx, lineStr := range t.header {
 		line := idx + 2
-		if t.inlineInfo {
+		if t.vim_noinfo {
+			line -= 2
+		} else if t.inlineInfo {
 			line--
 		}
 		if line >= max {
@@ -843,13 +895,24 @@ func (t *Terminal) printList() {
 
 	maxy := t.maxItems()
 	count := t.merger.Length() - t.offset
+	if t.vim {
+		height := count + 2 + len(t.header)
+		if t.vim_noinfo {
+			height -= 2
+		} else if t.inlineInfo {
+			height--
+		}
+		t.VimResizeSearchWin(height)
+	}
 	for j := 0; j < maxy; j++ {
 		i := j
 		if t.layout == layoutDefault {
 			i = maxy - 1 - j
 		}
 		line := i + 2 + len(t.header)
-		if t.inlineInfo {
+		if t.vim_noinfo {
+			line -= 2
+		} else if t.inlineInfo {
 			line--
 		}
 		if i < count {
@@ -1146,7 +1209,7 @@ func (t *Terminal) printAll() {
 	t.resizeWindows()
 	t.printList()
 	t.printPrompt()
-	t.printInfo()
+	t.printInfo(false)
 	t.printHeader()
 	t.printPreview()
 }
@@ -1469,7 +1532,7 @@ func (t *Terminal) Loop() {
 		t.initFunc()
 		t.resizeWindows()
 		t.printPrompt()
-		t.printInfo()
+		t.printInfo(false)
 		t.printHeader()
 		t.placeCursor()
 		t.refresh()
@@ -1510,6 +1573,9 @@ func (t *Terminal) Loop() {
 				})
 				// We don't display preview window if no match
 				if request[0] != nil {
+					if t.vim {
+						t.VimSetPreview(request[0].AsString(true))
+					}
 					command := replacePlaceholder(t.preview.command,
 						t.ansi, t.delimiter, false, string(t.input), request)
 					cmd := util.ExecCommand(command)
@@ -1529,6 +1595,10 @@ func (t *Terminal) Loop() {
 	}
 
 	exit := func(getCode func() int) {
+		if t.vim_noinfo {
+			t.showCursor()
+			t.vim_noinfo = false
+		}
 		if !t.cleanExit && t.fullscreen && t.inlineInfo {
 			t.placeCursor()
 		}
@@ -1553,10 +1623,10 @@ func (t *Terminal) Loop() {
 					case reqPrompt:
 						t.printPrompt()
 						if t.inlineInfo {
-							t.printInfo()
+							t.printInfo(false)
 						}
 					case reqInfo:
-						t.printInfo()
+						t.printInfo(true)
 					case reqList:
 						t.printList()
 						currentFocus := t.currentItem()
@@ -2055,7 +2125,9 @@ func (t *Terminal) vset(o int) bool {
 
 func (t *Terminal) maxItems() int {
 	max := t.window.Height() - 2 - len(t.header)
-	if t.inlineInfo {
+	if t.vim_noinfo {
+		max += 2
+	} else if t.inlineInfo {
 		max++
 	}
 	return util.Max(max, 0)
