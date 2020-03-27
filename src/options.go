@@ -62,6 +62,7 @@ const usage = `usage: fzf [options]
     --margin=MARGIN       Screen margin (TRBL / TB,RL / T,RL,B / T,R,B,L)
     --info=STYLE          Finder info style [default|inline|hidden]
     --prompt=STR          Input prompt (default: '> ')
+    --no-prompt           Don't show prompt
     --pointer=STR         Pointer to the current line (default: '>')
     --marker=STR          Multi-select marker (default: '>')
     --header=STR          String to print as header
@@ -218,6 +219,7 @@ type Options struct {
 	Unicode     bool
 	Tabstop     int
 	ClearOnExit bool
+	NoPrompt    bool
 	Version     bool
 }
 
@@ -273,6 +275,7 @@ func defaultOptions() *Options {
 		Unicode:     true,
 		Tabstop:     8,
 		ClearOnExit: true,
+		NoPrompt:    false,
 		Version:     false}
 }
 
@@ -1231,6 +1234,8 @@ func parseOptions(opts *Options, allArgs []string) {
 			opts.PrintQuery = false
 		case "--prompt":
 			opts.Prompt = nextString(allArgs, &i, "prompt string required")
+		case "--no-prompt":
+			opts.NoPrompt = true
 		case "--pointer":
 			opts.Pointer = nextString(allArgs, &i, "pointer sign string required")
 			validatePointer = true

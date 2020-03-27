@@ -135,6 +135,7 @@ type Terminal struct {
 	slab         *util.Slab
 	theme        *tui.ColorTheme
 	tui          tui.Renderer
+	noPrompt     bool
 }
 
 type selectedItem struct {
@@ -453,6 +454,7 @@ func NewTerminal(opts *Options, eventBox *util.EventBox) *Terminal {
 		startChan:   make(chan bool, 1),
 		killChan:    make(chan int),
 		tui:         renderer,
+		noPrompt:    opts.NoPrompt,
 		initFunc:    func() { renderer.Init() }}
 	t.prompt, t.promptLen = t.processTabs([]rune(opts.Prompt), 0)
 	t.pointer, t.pointerLen = t.processTabs([]rune(opts.Pointer), 0)
@@ -774,6 +776,9 @@ func (t *Terminal) move(y int, x int, clear bool) {
 		y = h - y - 1
 	case layoutReverseList:
 		n := 2 + len(t.header)
+		if t.noPrompt {
+			n--
+		}
 		if t.noInfoLine() {
 			n--
 		}
@@ -812,11 +817,22 @@ func (t *Terminal) updatePromptOffset() ([]rune, []rune) {
 	return before, after
 }
 
+func (t *Terminal) showCursor() {
+	fmt.Fprintf(os.Stderr, "\x1b[?25h")
+}
+
+func (t *Terminal) hideCursor() {
+	fmt.Fprintf(os.Stderr, "\x1b[?25l")
+}
+
 func (t *Terminal) placeCursor() {
 	t.move(0, t.promptLen+t.queryLen[0], false)
 }
 
 func (t *Terminal) printPrompt() {
+	if t.noPrompt {
+		return
+	}
 	t.move(0, 0, true)
 	t.window.CPrint(tui.ColPrompt, t.strong, t.prompt)
 
@@ -829,13 +845,17 @@ func (t *Terminal) printInfo() {
 	pos := 0
 	switch t.infoStyle {
 	case infoDefault:
-		t.move(1, 0, true)
+		ypos := 1
+		if t.noPrompt {
+			ypos = 0
+		}
+		t.move(ypos, 0, true)
 		if t.reading {
 			duration := int64(spinnerDuration)
 			idx := (time.Now().UnixNano() % (duration * int64(len(t.spinner)))) / duration
 			t.window.CPrint(tui.ColSpinner, t.strong, t.spinner[idx])
 		}
-		t.move(1, 2, false)
+		t.move(ypos, 2, false)
 		pos = 2
 	case infoInline:
 		pos = t.promptLen + t.queryLen[0] + t.queryLen[1] + 1
@@ -892,6 +912,9 @@ func (t *Terminal) printHeader() {
 	var state *ansiState
 	for idx, lineStr := range t.header {
 		line := idx + 2
+		if t.noPrompt {
+			line--
+		}
 		if t.noInfoLine() {
 			line--
 		}
@@ -921,6 +944,9 @@ func (t *Terminal) printList() {
 			i = maxy - 1 - j
 		}
 		line := i + 2 + len(t.header)
+		if t.noPrompt {
+			line--
+		}
 		if t.noInfoLine() {
 			line--
 		}
@@ -1221,7 +1247,9 @@ func (t *Terminal) printAll() {
 }
 
 func (t *Terminal) refresh() {
-	t.placeCursor()
+	if !t.noPrompt {
+		t.placeCursor()
+	}
 	if !t.suppress {
 		windows := make([]tui.Window, 0, 4)
 		if t.borderShape != tui.BorderNone {
@@ -1615,6 +1643,9 @@ func (t *Terminal) Loop() {
 		t.printInfo()
 		t.printHeader()
 		t.refresh()
+		if t.noPrompt {
+			t.hideCursor()
+		}
 		t.mutex.Unlock()
 		go func() {
 			timer := time.NewTimer(t.initDelay)
@@ -1706,6 +1737,10 @@ func (t *Terminal) Loop() {
 	}
 
 	exit := func(getCode func() int) {
+		if t.noPrompt {
+			t.showCursor()
+			t.move(0, 0, true)
+		}
 		t.tui.Close()
 		code := getCode()
 		if code <= exitNoMatch && t.history != nil {
@@ -2130,6 +2165,9 @@ func (t *Terminal) Loop() {
 					my -= t.window.Top()
 					mx = util.Constrain(mx-t.promptLen, 0, len(t.input))
 					min := 2 + len(t.header)
+					if t.noPrompt {
+						min--
+					}
 					if t.noInfoLine() {
 						min--
 					}
@@ -2233,6 +2271,10 @@ func (t *Terminal) Loop() {
 			req(reqPrompt)
 		}
 
+		if !changed && t.noPrompt {
+			t.hideCursor()
+		}
+
 		t.mutex.Unlock() // Must be unlocked before touching reqBox
 
 		if changed || newCommand != nil {
@@ -2298,6 +2340,9 @@ func (t *Terminal) vset(o int) bool {
 
 func (t *Terminal) maxItems() int {
 	max := t.window.Height() - 2 - len(t.header)
+	if t.noPrompt {
+		max++
+	}
 	if t.noInfoLine() {
 		max++
 	}
