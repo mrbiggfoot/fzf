@@ -50,6 +50,7 @@ const usage = `usage: fzf [options]
                           highlighted substring (default: 10)
     --filepath-word       Make word-wise movements respect path separators
     --jump-labels=CHARS   Label characters for jump and jump-accept
+    --vim                 Enable vim integration
 
   Layout
     --height=HEIGHT[%]    Display fzf window below the cursor with the given
@@ -220,6 +221,7 @@ type Options struct {
 	Tabstop     int
 	ClearOnExit bool
 	NoPrompt    bool
+	Vim         bool
 	Version     bool
 }
 
@@ -276,6 +278,7 @@ func defaultOptions() *Options {
 		Tabstop:     8,
 		ClearOnExit: true,
 		NoPrompt:    false,
+		Vim:         false,
 		Version:     false}
 }
 
@@ -1296,6 +1299,8 @@ func parseOptions(opts *Options, allArgs []string) {
 			opts.ClearOnExit = true
 		case "--no-clear":
 			opts.ClearOnExit = false
+		case "--vim":
+			opts.Vim = true
 		case "--version":
 			opts.Version = true
 		default:

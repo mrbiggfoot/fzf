@@ -13,6 +13,8 @@ features:
 - One line scrolling, similar to vim's `<C-y>` and `<C-e>` in normal mode.
   Two new actions have been added: `line-up` and `line-down`.
 
+- `vim` integration via [neoview](https://github.com/mrbiggfoot/neoview)
+
 ## Installation
 Using `vim-plug`:
 ```
