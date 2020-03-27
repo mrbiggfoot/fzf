@@ -828,6 +828,10 @@ func parseKeymap(keymap map[int][]action, str string) {
 				appendAction(actHalfPageUp)
 			case "half-page-down":
 				appendAction(actHalfPageDown)
+			case "line-up":
+				appendAction(actLineUp)
+			case "line-down":
+				appendAction(actLineDown)
 			case "previous-history":
 				appendAction(actPreviousHistory)
 			case "next-history":
